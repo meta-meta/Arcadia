@@ -3,6 +3,14 @@
   (:import LoopyBenchmark2 LoopyBenchmark3
            ListLoopBenchmark2))
 
+;; make sure this doesn't annoyingly fail to erase itself from clojure
+;; code when not profiling
+(defmacro profiling [name & body]
+  `(do (UnityEngine.Profiler/BeginSample ~name)
+       (let [res# (do ~@body)]
+         (UnityEngine.Profiler/EndSample)
+         res#)))
+
 ;; imperative loop decrementing from 1e6
 (defn ^long test1 []
   (loop [i 1000000]
@@ -12,7 +20,8 @@
 
 (defcomponent LoopTester []
   (Update [this]
-    (test1)))
+    (profiling "the test1"
+      (test1))))
 
 ;; dirt-simple imperative loop decrementing from 1e6, no casts
 (def ^LoopyBenchmark2 lb2
@@ -20,7 +29,8 @@
 
 (defcomponent LoopTester2 []
   (Update [this]
-    (lb2)))
+    (profiling "the LoopyBenchmark2"
+      (lb2))))
 
 ;; slightly more complex imperative loop decrementing from 1e6, copied
 ;; from reassembled bytecode of test1
@@ -29,7 +39,8 @@
 
 (defcomponent LoopTester3 []
   (Update [this]
-    (lb3)))
+    (profiling "the LoopyBenchmark3"
+      (lb3))))
 
 ;; test1, hedged with (set-unchecked-math true); in practice seems to
 ;; make no difference at all
@@ -49,7 +60,8 @@
 
 (defcomponent LoopTester4 []
   (Update [this]
-    (test4)))
+    (profiling "the test4"
+      (test4))))
 
 ;; ============================================================
 ;; list loop
@@ -62,28 +74,22 @@
       (recur (conj l i) (dec i))
       (count l))))
 
-(defmacro profiling [name & body]
-  `(do (UnityEngine.Profiler/BeginSample ~name)
-       (let [res# (do ~@body)]
-         (UnityEngine.Profiler/EndSample)
-         res#)))
-
 (set-unchecked-math true)
 
 (defn list-test-1 []
-  (profiling "the list-test-1"
-    (loop [l '(), i 1000000]
-      (if (> i 0)
-        (recur
-          (conj l i)
-          (dec i))
-        (count l)))))
+  (loop [l '(), i 1000000]
+    (if (> i 0)
+      (recur
+        (conj l i)
+        (dec i))
+      (count l))))
 
 (set-unchecked-math nil)
 
 (defcomponent ListLoopTester1 []
   (Update [this]
-    (list-test-1)))
+    (profiling "the list-test-1"
+      (list-test-1))))
 
 ;; cobbled together from reassembled bytecode of list-test-1, which
 ;; turns out to involve an extra function allocation
@@ -92,4 +98,5 @@
 
 (defcomponent ListLoopTester2 []
   (Update [this]
-    (llb2)))
+    (profiling "the ListLoopBenchmark2"
+      (llb2))))
