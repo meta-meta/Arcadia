@@ -152,7 +152,7 @@
   "Do not use this directly - use defrecord"
   {:added "1.2"} 
   [tagname name fields interfaces methods]
-  (let [classname (with-meta (symbol (str (namespace-munge *ns*) "." name)) (meta name))
+  (let [classname (with-meta (symbol (str (namespace-munge *ns*) "." name)) (dissoc (meta name) :tag))
         interfaces (vec interfaces)
         interface-set (set (map resolve interfaces))
         methodname-set (set (map first methods))
@@ -160,7 +160,7 @@
         fields (vec (map #(with-meta % nil) fields))
         base-fields fields
         fields (conj fields '__meta '__extmap)
-		type-hash (hash classname)]
+    type-hash (hash classname)]
     (when (some #{:volatile-mutable :unsynchronized-mutable} (mapcat (comp keys meta) hinted-fields))
       (throw (ArgumentException. ":volatile-mutable or :unsynchronized-mutable not supported for record fields")))   ;;; IllegalArgumentException
     (let [gs (gensym)]
@@ -188,7 +188,7 @@
                 `(getLookupThunk [this# k#]
                    (let [~'gclass (class this#)]              
                      (case k#
-                           ~@(let [hinted-target (with-meta 'gtarget {:tag tagname})]
+                           ~@(let [hinted-target 'gtarget]
                                (mapcat 
                                 (fn [fld]
                                   [(keyword fld) 
@@ -209,7 +209,7 @@
                         (boolean 
                          (or (identical? this# ~gs)
                              (when (identical? (class this#) (class ~gs))
-                               (let [~gs ~(with-meta gs {:tag tagname}) ]
+                               (let [~gs ~gs ]
                                  (and  ~@(map (fn [fld] `(= ~fld (. ~gs ~(symbol (str "-" fld))))) base-fields)
                                        (= ~'__extmap (. ~gs ~'__extmap))))))))
                    `(containsKey [this# k#] (not (identical? this# (.valAt this# k# this#))))
@@ -218,7 +218,7 @@
                                               (clojure.lang.MapEntry. k# v#))))
                    `(seq [this#] (seq (concat [~@(map #(list `new `clojure.lang.MapEntry (keyword %) %) base-fields)] 
                                           ~'__extmap)))
-					`(|System.Collections.Generic.IEnumerable`1[clojure.lang.IMapEntry]|.GetEnumerator [this#]  (clojure.lang.IMapEntrySeqEnumerator. this#))
+          `(|System.Collections.Generic.IEnumerable`1[clojure.lang.IMapEntry]|.GetEnumerator [this#]  (clojure.lang.IMapEntrySeqEnumerator. this#))
                    `(^clojure.lang.IPersistentMap assoc [this# k# ~gs]                        ;;; type hint added
                      (condp identical? k#
                        ~@(mapcat (fn [fld]
@@ -253,10 +253,10 @@
                   `(System.Collections.IDictionary.GetEnumerator [this#]  (clojure.lang.Runtime.ImmutableDictionaryEnumerator. this#))
                   `(System.Collections.IEnumerable.GetEnumerator [this#]  (clojure.lang.IMapEntrySeqEnumerator. (seq this#)))
                   )])
-	  (cntd [[i m]]                                                                                       ;;; ADDED
-	        [(conj i 'clojure.lang.Counted)                                                               ;;; ADDED
-			 (conj m                                                                                      ;;; ADDED
-			      `(clojure.lang.Counted.count [this#] (+ ~(count base-fields) (count ~'__extmap))))])	  ;;; ADDED		                   
+    (cntd [[i m]]                                                                                       ;;; ADDED
+          [(conj i 'clojure.lang.Counted)                                                               ;;; ADDED
+       (conj m                                                                                      ;;; ADDED
+            `(clojure.lang.Counted.count [this#] (+ ~(count base-fields) (count ~'__extmap))))])    ;;; ADDED                      
       (ipc [[i m]]                                                                                        ;;; ADDED
            [(conj i 'clojure.lang.IPersistentCollection)                                                  ;;; ADDED
             (conj m                                                                                       ;;; ADDED                   
@@ -291,9 +291,9 @@
         field-count (count fields)
         arg-count (count field-args)
         over-count (count over)
-		docstring (str "Positional factory function for class " classname ".")]
+    docstring (str "Positional factory function for class " classname ".")]
     `(defn ~fn-name
-	   ~docstring
+     ~docstring
        [~@field-args ~@(if (seq over) '[& overage] [])]
        ~(if (seq over)
           `(if (= (count ~'overage) ~over-count)
@@ -395,14 +395,14 @@
   (validate-fields fields name)
   (let [gname name
         [interfaces methods opts] (parse-opts+specs opts+specs)
-		ns-part (namespace-munge *ns*)
+    ns-part (namespace-munge *ns*)
         classname (symbol (str ns-part  "." gname))
         hinted-fields fields
         fields (vec (map #(with-meta % nil) fields))]
     `(let []
        (declare ~(symbol (str  '-> gname)))
        (declare ~(symbol (str 'map-> gname)))
-	   ~(emit-defrecord name gname (vec hinted-fields) (vec interfaces) methods)
+     ~(emit-defrecord name gname (vec hinted-fields) (vec interfaces) methods)
        (import ~classname)
        ~(build-positional-factory gname classname fields)
        (defn ~(symbol (str 'map-> gname))
@@ -421,7 +421,7 @@
 (defn- emit-deftype* 
   "Do not use this directly - use deftype"
   [tagname name fields interfaces methods]
-  (let [classname (with-meta (symbol (str (namespace-munge *ns*) "." name)) (meta name))
+  (let [classname (with-meta (symbol (str (namespace-munge *ns*) "." name)) (dissoc (meta name) :tag))
         interfaces (conj interfaces 'clojure.lang.IType)]
     `(deftype* ~tagname ~classname ~fields 
        :implements ~interfaces 
@@ -495,16 +495,16 @@
   (validate-fields fields name)
   (let [gname name 
         [interfaces methods opts] (parse-opts+specs opts+specs)
-		ns-part (namespace-munge *ns*)
+    ns-part (namespace-munge *ns*)
         classname (symbol (str ns-part "." gname))
         hinted-fields fields
         fields (vec (map #(with-meta % nil) fields))
-		[field-args over] (split-at 20 fields)]
+    [field-args over] (split-at 20 fields)]
     `(let []
        ~(emit-deftype* name gname (vec hinted-fields) (vec interfaces) methods)
        (import ~classname)
        ~(build-positional-factory gname classname fields)
-	   ~classname)))
+     ~classname)))
 
 ;;;;;;;;;;;;;;;;;;;;;;; protocols ;;;;;;;;;;;;;;;;;;;;;;;;
 
