@@ -143,7 +143,8 @@
     (mu/lit-map interface name args fntail)))
 
 (defn- find-message-interface-symbol [s]
-  (symbol (str "arcadia.messages.I" s)))
+  (when (contains? arcadia.messages/messages s) ;; bit janky
+    (symbol (str "arcadia.messages.I" s))))
 
 (defn- awake-method? [{:keys [name]}]
   (= name 'Awake))
@@ -153,61 +154,69 @@
         :let [interface (find-message-interface-symbol name)]]
     (mu/lit-map interface name args fntail)))
 
-(defn- process-method [{:keys [interface name args fntail]}]
-  [interface `(~name ~args ~@fntail)])
+(defn- process-method [{:keys [name args fntail]}]
+  `(~name ~args ~@fntail))
 
-(defn- ensure-has-awake [mimpls]
-  (if (some awake-method? mimpls)
-    mimpls
-    (cons {:interface (find-message-interface-symbol 'Awake)
-           :name     'Awake
-           :args     '[this]
-           :fntail   nil}
-      mimpls)))
+;; (defn- ensure-has-message [interface-symbol args mimpls]
+;;   (if (some #(= (:name %) interface-symbol) mimpls)
+;;     mimpls
+;;     (cons {:interface (find-message-interface-symbol interface-symbol)
+;;            :name     interface-symbol
+;;            :args     args
+;;            :fntail   nil}
+;;       mimpls)))
 
-(defn- ensure-has-start [mimpls]
-  (if (some #(= (:name %) 'Start) mimpls)
-    mimpls
-    (cons {:interface (find-message-interface-symbol 'Start)
-           :name     'Start
-           :args     '[this]
-           :fntail   nil}
-      mimpls)))
+(defn- ensure-has-method [{msg-name :name,
+                           :keys [args interface]
+                           :or {args '[_]},
+                           :as default},
+                          mimpls]
+  (let [{:keys [interface]
+         :or {interface (find-message-interface-symbol msg-name)}} default]
+    (assert interface "Must declare interface or use known message name")
+    (if (some #(= (:name %) msg-name) mimpls)
+      mimpls
+      (cons
+        (merge {:interface interface
+                :name     msg-name
+                :args     args
+                :fntail   nil}
+          default)
+        mimpls))))
 
 (defn- process-require-trigger [impl ns-squirrel-sym]
-  (process-method
-    (update-in impl [:fntail]
-      #(cons `(do ;(UnityEngine.Debug/Log (str "requiring " (quote ~(ns-name *ns*))))
-                (require (quote ~(ns-name *ns*)))
-                ;(UnityEngine.Debug/Log (str "(hopefully) required " (quote ~(ns-name *ns*))))
-                )
-         %))))
+  (update-in impl [:fntail]
+    #(cons `(do
+              (require (quote ~(ns-name *ns*))))
+       %)))
 
 (defn- require-trigger-method? [mimpl]
   (boolean
     (#{'Awake 'OnDrawGizmosSelected 'OnDrawGizmos 'Start}
      (:name mimpl))))
 
+(defn- collapse-method [impl]
+  (mu/checked-keys [[name args fntail] impl]
+    `(~name ~args ~@fntail)))
+
 (defn- process-defcomponent-method-implementations [mimpls ns-squirrel-sym]
   (let [[msgimpls impls] ((juxt take-while drop-while)
                           (complement symbol?)
-                          mimpls)
-        nrmls            (->
-                           (concat
-                             (normalize-message-implementations msgimpls)
-                             (normalize-method-implementations impls))
-                           ensure-has-awake
-                           ensure-has-start; I mean why not
-                           )]
-    (apply concat
-      (for [impl nrmls]
-        (if (require-trigger-method? impl)
-          (process-require-trigger impl ns-squirrel-sym)
-          (process-method impl))
-        ;; (if (awake-method? impl)
-        ;;   (process-awake-method impl)
-        ;;   (process-method impl))
-        ))))
+                          mimpls)]
+    (->>
+      (concat
+        (normalize-message-implementations msgimpls)
+        (normalize-method-implementations impls))
+      (ensure-has-method {:name 'Start})
+      (ensure-has-method {:name 'Awake})
+      (map (fn [impl]
+             (if (require-trigger-method? impl)
+               (process-require-trigger impl ns-squirrel-sym)
+               impl)))
+      (group-by :interface)
+      (mapcat
+        (fn [[k impls]]
+          (cons k (map collapse-method impls)))))))
 
 (defmacro defcomponent*
   "Defines a new component. See defcomponent for version with defonce
