@@ -84,6 +84,10 @@
          (first-form-is-ns? file)
          (correct-ns? file))))
 
+;; (defn import-asset [asset]
+;;   (Debug/Log (str "Reloading " asset))
+;;   (require (asset->ns asset) :reload))
+
 (defn import-asset [asset]
   (let [config @configuration
         verbose (config :verbose)
@@ -96,7 +100,7 @@
                 debug]}
         (config :compiler)
         assemblies (or assemblies
-                       (assemblies-path))]
+                     (assemblies-path))]
     (if (and enabled (should-compile? asset))
       (try
         (let [namespace (asset->ns asset)
@@ -112,22 +116,22 @@
                 (str "Compiling " (name namespace) "...")))
             (compile namespace)
             (doseq [error (remove empty? (clojure.string/split (.ToString errors) #"\n"))]
-                 (Debug/LogWarning error))
+              (Debug/LogWarning error))
             (AssetDatabase/Refresh ImportAssetOptions/ForceUpdate)))
-          (catch clojure.lang.Compiler+CompilerException e
-            (Debug/LogError (str (.. e InnerException Message) " (at " (.FileSource e) ":" (.Line e) ")")))
-          (catch Exception e
-            (Debug/LogException e)))
+        (catch clojure.lang.Compiler+CompilerException e
+          (Debug/LogError (str (.. e InnerException Message) " (at " (.FileSource e) ":" (.Line e) ")")))
+        (catch Exception e
+          (Debug/LogException e)))
       (if (config :verbose)
         (Debug/LogWarning (str "Skipping " asset ", "
-                               (cond (not enabled)
-                                     "compiler is disabled"
-                                     (not (first-form-is-ns? asset))
-                                     "first form is not ns"
-                                     (not (correct-ns? asset))
-                                     "namespace in ns form does not match file name"
-                                     :else
-                                     "not sure why")))))))
+                            (cond (not enabled)
+                                  "compiler is disabled"
+                                  (not (first-form-is-ns? asset))
+                                  "first form is not ns"
+                                  (not (correct-ns? asset))
+                                  "namespace in ns form does not match file name"
+                                  :else
+                                  "not sure why")))))))
 
 (defn import-assets [imported]
   (doseq [asset (clj-files imported)]
